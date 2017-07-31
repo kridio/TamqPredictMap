@@ -2,6 +2,14 @@ package tw.gov.epa.tamqpredictmap.predict;
 
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -10,6 +18,8 @@ import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
+import tw.gov.epa.tamqpredictmap.MapsActivity;
+import tw.gov.epa.tamqpredictmap.basic.BasePresenter;
 import tw.gov.epa.tamqpredictmap.predict.model.PredictData;
 import tw.gov.epa.tamqpredictmap.predict.model.Result;
 
@@ -17,7 +27,11 @@ import tw.gov.epa.tamqpredictmap.predict.model.Result;
  * Created by user on 2017/3/2.
  */
 
-public class DriverService {
+public class DriverService extends BasePresenter<DriverService.View> {
+    public interface View{
+        void refreshMap(List<Result> results);
+    }
+
     private String url = "https://drive.google.com/"; //https://www.googleapis.com/
     //測試ID:"0B_TvZKObPCRCa1VSdVJaWkU2Q2s" 正式ID:"0B7Ld7OVhJc6HTDlya29QbEpRdEU"
     private String id = "0B7Ld7OVhJc6HTDlya29QbEpRdEU";//"0B_TvZKObPCRCa1VSdVJaWkU2Q2s";
@@ -47,7 +61,7 @@ public class DriverService {
                 for(Result res:response.body().getResult()){
                     Log.d("Driverservice:",res.getSiteName()+":"+res.getHr1());
                 }
-
+                view.refreshMap(response.body().getResult());
             }
 
             @Override

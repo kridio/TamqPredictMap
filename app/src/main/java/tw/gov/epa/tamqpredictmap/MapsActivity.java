@@ -9,10 +9,13 @@ import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
 import android.view.Display;
+import android.view.View;
+import android.view.ViewTreeObserver;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
@@ -34,7 +37,7 @@ import java.util.List;
 import java.util.Scanner;
 
 import tw.gov.epa.tamqpredictmap.predict.DriverService;
-import tw.gov.epa.tamqpredictmap.predict.TamqPredictTileProvider;
+import tw.gov.epa.tamqpredictmap.paint.TamqPredictTileProvider;
 import tw.gov.epa.tamqpredictmap.predict.model.Result;
 
 
@@ -52,6 +55,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private TileOverlay mOverlay;
 
     DriverService driverService;
+    View mapView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +72,27 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         } catch (JSONException e) {
             e.printStackTrace();
         }
+
+//        final View mapView = mapFragment.getView();
+//        if (mapView.getViewTreeObserver().isAlive()) {
+//            mapView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+//                @Override
+//                public void onGlobalLayout() {
+//                    // remove the listener
+//                    // ! before Jelly Bean:
+//                    mapView.getViewTreeObserver().removeGlobalOnLayoutListener(this);
+//                    // ! for Jelly Bean and later:
+//                    //mapView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+//                    // set map viewport
+//                    // CENTER is LatLng object with the center of the map
+//                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(CENTER, 15));
+//                    // ! you can query Projection object here
+//                    Point markerScreenPosition = map.getProjection().toScreenLocation(marker.getPosition());
+//                    // ! example output in my test code: (356, 483)
+//                    System.out.println(markerScreenPosition);
+//                }
+//            });
+//        }
     }
 
     /**
@@ -92,20 +117,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f));
+//        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f));
 
         mMap.setMapStyle(MapStyleOptions.loadRawResourceStyle(
                 this, R.raw.map_style));
 
-        //25.341075, 120.172856
-        //21.942719, 121.910504
         Log.d(MapsActivity.class.getSimpleName(),""+mMap.getMaxZoomLevel());
         Log.d(MapsActivity.class.getSimpleName(),""+mMap.getMinZoomLevel());
 
         //gesture control disable
-        mMap.getUiSettings().setZoomGesturesEnabled(false);
-        mMap.getUiSettings().setRotateGesturesEnabled(false);
-        mMap.getUiSettings().setScrollGesturesEnabled(false);
-        mMap.getUiSettings().setTiltGesturesEnabled(false);
+//        mMap.getUiSettings().setZoomGesturesEnabled(false);
+//        mMap.getUiSettings().setRotateGesturesEnabled(false);
+//        mMap.getUiSettings().setScrollGesturesEnabled(false);
+//        mMap.getUiSettings().setTiltGesturesEnabled(false);
 
 //        String title = "This is Title";
 //        String subTitle = "This is \nSubtitle";
@@ -132,6 +156,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //        });
 
         getData();
+
+        Point laa = mMap.getProjection().toScreenLocation(new LatLng(21.942719, 121.910504));
+        LatLng lat = mMap.getProjection().fromScreenLocation(new Point(1000,1000));
+        Projection pro = mMap.getProjection();
+        Log.d(MapsActivity.class.getSimpleName(),"==>"+lat.latitude);
     }
 
     private BitmapDescriptor getMarkerIconFromDrawable(Drawable drawable) {
@@ -157,6 +186,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         int height = size.y;
     }
 
+    /*
+   *級距 R   G   B
+   * 1  153 255 153
+   * 2  0   255 0
+   * 3  0   204 0
+   * 4  255 255 0
+   * 5  255 104 102
+   * 6  255 153 0
+   * 7  255 124 128
+   * 8  255 0   0
+   * 9  153 0   51
+   * 10 204 0   255
+    */
     @Override
     public void refreshMap(List<Result> resultList) {
         String latlng="";
@@ -170,14 +212,32 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             Double value = 0.0;
             if (!res.getHr().toLowerCase().equals("nan")) {
                 value = Double.parseDouble(res.getHr());
-                if(value<36){
+                if(value<12){
                     value = 0.1;
                 }
-                else if(value<54){
+                else if(value<24){
                     value = 0.2;
                 }
-                else if(value<71){
+                else if(value<36){
+                    value = 0.3;
+                }
+                else if(value<42){
+                    value = 0.4;
+                }
+                else if(value<48){
+                    value = 0.5;
+                }
+                else if(value<54){
                     value = 0.6;
+                }
+                else if(value<59){
+                    value = 0.7;
+                }
+                else if(value<65){
+                    value = 0.8;
+                }
+                else if(value<71){
+                    value = 0.9;
                 }
                 else{
                     value = 1.0;
@@ -190,12 +250,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     public void setHeatMap(List<WeightedLatLng> weightedLatLngs){
         if(mProvider==null) {
-            mProvider = new HeatmapTileProvider.Builder()
-                    .weightedData(weightedLatLngs)
-                    .radius(30)
-                    .opacity(0.3)
-                    .build();
-            mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
+//            mProvider = new HeatmapTileProvider.Builder()
+//                    .weightedData(weightedLatLngs)
+//                    .radius(30)
+//                    .opacity(0.3)
+//                    .build();
+//            mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
 
 //            mPointTile  = new PointTileOverlay();
 //            mPointTile.addPoint(new LatLng(0, 0));
@@ -206,10 +266,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if(mTamqTileProvider==null){
             mTamqTileProvider = new TamqPredictTileProvider.Builder()
                     .opacity(0.5)
+                    .radius(30)
                     .weightedData(weightedLatLngs)
                     .build();
             mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mTamqTileProvider));
         }
+
+    }
+
+    private void genMapArray(){
+        //25.341075, 120.172856
+        //25.341075, 121.910504
+        //21.942719, 120.172856
+        //21.942719, 121.910504
+        double height = (25.341075 - 21.942719) / 9;
+        double width = (121.910504 - 120.172856) / 9;
 
     }
 

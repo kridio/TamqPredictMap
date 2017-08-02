@@ -72,7 +72,7 @@ public class Gradient {
             }
 
             float c = (float)(i - start) / interval.duration;
-            colorMap[i] = interval.color2;//interpolateColor(interval.color1, interval.color2, c);
+            colorMap[i] = interpolateColor(interval.color1, interval.color2, c);
         }
 
         if(opacity != 1.0D) {

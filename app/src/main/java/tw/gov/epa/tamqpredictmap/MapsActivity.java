@@ -3,6 +3,8 @@ package tw.gov.epa.tamqpredictmap;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -21,15 +23,19 @@ import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MapStyleOptions;
+import com.google.android.gms.maps.model.Tile;
 import com.google.android.gms.maps.model.TileOverlay;
 import com.google.android.gms.maps.model.TileOverlayOptions;
+import com.google.android.gms.maps.model.TileProvider;
 import com.google.maps.android.heatmaps.HeatmapTileProvider;
 import com.google.maps.android.heatmaps.WeightedLatLng;
+import com.google.maps.android.projection.SphericalMercatorProjection;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -93,6 +99,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //                }
 //            });
 //        }
+
+
     }
 
     /**
@@ -116,7 +124,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         });
 
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f));
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.5f)); //7.8
 //        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f));
 
         mMap.setMapStyle(MapStyleOptions.loadRawResourceStyle(
@@ -124,6 +132,30 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         Log.d(MapsActivity.class.getSimpleName(),""+mMap.getMaxZoomLevel());
         Log.d(MapsActivity.class.getSimpleName(),""+mMap.getMinZoomLevel());
+
+        final View mapView = getSupportFragmentManager().findFragmentById(R.id.map).getView();
+        if (mapView.getViewTreeObserver().isAlive()) {
+            mapView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    // remove the listener
+                    // ! before Jelly Bean:
+
+                    // ! for Jelly Bean and later:
+                    //mapView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    // set map viewport
+                    // CENTER is LatLng object with the center of the map
+//                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 15));
+                    // ! you can query Projection object here
+                    Point markerScreenPosition = mMap.getProjection().toScreenLocation(new LatLng(25.341075, 120.172856));
+                    LatLng tt = mMap.getProjection().fromScreenLocation(new Point(1440,2464));
+                    // ! example output in my test code: (356, 483)
+                    Log.d(MapsActivity.class.getSimpleName(),""+tt+","+mapView.getWidth()+","+ mapView.getHeight());
+
+                    mapView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                }
+            });
+        }
 
         //gesture control disable
 //        mMap.getUiSettings().setZoomGesturesEnabled(false);
@@ -157,10 +189,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         getData();
 
-        Point laa = mMap.getProjection().toScreenLocation(new LatLng(21.942719, 121.910504));
-        LatLng lat = mMap.getProjection().fromScreenLocation(new Point(1000,1000));
-        Projection pro = mMap.getProjection();
-        Log.d(MapsActivity.class.getSimpleName(),"==>"+lat.latitude);
+//        Point laa = mMap.getProjection().toScreenLocation(new LatLng(21.942719, 121.910504));
+//        LatLng lat = mMap.getProjection().fromScreenLocation(new Point(1000,1000));
+//        Projection pro = mMap.getProjection();
+//        Log.d(MapsActivity.class.getSimpleName(),"==>"+lat.latitude);
     }
 
     private BitmapDescriptor getMarkerIconFromDrawable(Drawable drawable) {
@@ -178,13 +210,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         return resizedBitmap;
     }
 
-    public void showScreenSize(){
-        Display display = getWindowManager().getDefaultDisplay();
-        Point size = new Point();
-        display.getSize(size);
-        int width = size.x;
-        int height = size.y;
-    }
+//    public void showScreenSize(){
+//        Display display = getWindowManager().getDefaultDisplay();
+//        Point size = new Point();
+//        display.getSize(size);
+//        int width = size.x;
+//        int height = size.y;
+//    }
 
     /*
    *級距 R   G   B
@@ -249,7 +281,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     public void setHeatMap(List<WeightedLatLng> weightedLatLngs){
-        if(mProvider==null) {
+//        if(mProvider==null) {
 //            mProvider = new HeatmapTileProvider.Builder()
 //                    .weightedData(weightedLatLngs)
 //                    .radius(30)
@@ -261,7 +293,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //            mPointTile.addPoint(new LatLng(0, 0));
 //            mPointTile.addPoint(new LatLng(21, -10));
 //            mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mPointTile));
-        }
+//        }
 
         if(mTamqTileProvider==null){
             mTamqTileProvider = new TamqPredictTileProvider.Builder()
@@ -272,7 +304,42 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mTamqTileProvider));
         }
 
+//        PointTileOverlay pto = new PointTileOverlay();
+//        pto.addPoint(new LatLng(25.341075, 120.172856));
+//        mMap.addTileOverlay(new TileOverlayOptions().tileProvider(pto));
     }
+
+//    private class PointTileOverlay implements TileProvider {
+//        private List<Point> mPoints = new ArrayList<Point>();
+//        private int mTileSize = 256;
+//        private SphericalMercatorProjection mProjection = new SphericalMercatorProjection(mTileSize);
+//        private int mScale = 2;
+//        private int mDimension = mScale * mTileSize;
+//
+//        @Override
+//        public Tile getTile(int x, int y, int zoom) {
+//            Matrix matrix = new Matrix();
+//            float scale = (float) Math.pow(2, zoom) * mScale;
+//            matrix.postScale(scale, scale);
+//            matrix.postTranslate(-x * mDimension, -y * mDimension);
+//
+//            Bitmap bitmap = Bitmap.createBitmap(mDimension, mDimension, Bitmap.Config.ARGB_8888);
+//            Canvas c = new Canvas(bitmap);
+//            c.setMatrix(matrix);
+//
+//            for (Point p : mPoints) {
+//                c.drawCircle((float) p.x, (float) p.y, 1, new Paint());
+//            }
+//
+//            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+//            bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos);
+//            return new Tile(mDimension, mDimension, baos.toByteArray());
+//        }
+//
+//        public void addPoint(LatLng latLng) {
+//            mPoints.add(mProjection.toPoint(latLng));
+//        }
+//    }
 
     private void genMapArray(){
         //25.341075, 120.172856

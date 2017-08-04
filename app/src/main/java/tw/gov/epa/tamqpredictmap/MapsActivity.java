@@ -3,21 +3,20 @@ package tw.gov.epa.tamqpredictmap;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Matrix;
-import android.graphics.Paint;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
-import android.view.Display;
 import android.view.View;
 import android.view.ViewTreeObserver;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
-import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
@@ -35,28 +34,31 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Scanner;
 
-import tw.gov.epa.tamqpredictmap.predict.DriverService;
 import tw.gov.epa.tamqpredictmap.paint.TamqPredictTileProvider;
+import tw.gov.epa.tamqpredictmap.predict.DriverService;
 import tw.gov.epa.tamqpredictmap.predict.model.Result;
 
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,DriverService.View {
 
+    private static final String TAG = MapsActivity.class.getSimpleName();
     private GoogleMap mMap;
 
-    private static HashMap<String,String> latlngSiteMap = new HashMap<>();
+    private static HashMap<String,LatLng> latlngSiteMap = new HashMap<>();
+    private static HashMap<LatLng,Point> latlngPointHasValueMap = new HashMap<>();
+    private static HashMap<LatLng,Point> latlngPointNoValueMap = new HashMap<>();
     private HashMap<String, DataSet> mDataSets = new HashMap<String, DataSet>();
-
-    private HeatmapTileProvider mProvider;
-
-    private TamqPredictTileProvider mTamqTileProvider;
 
     private TileOverlay mOverlay;
 
@@ -103,6 +105,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
+    private Handler mThreadHandler;
+    private HandlerThread mThread;
+
     /**
      * Manipulates the map once available.
      * This callback is triggered when the map is ready to be used.
@@ -112,6 +117,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
      * it inside the SupportMapFragment. This method will only be triggered once the user has
      * installed Google Play services and returned to the app.
      */
+    Point markerScreenPosition;
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
@@ -124,7 +130,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         });
 
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.5f)); //7.8
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f)); //7.8
 //        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 7.8f));
 
         mMap.setMapStyle(MapStyleOptions.loadRawResourceStyle(
@@ -147,12 +153,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     // CENTER is LatLng object with the center of the map
 //                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(23.6, 121), 15));
                     // ! you can query Projection object here
-                    Point markerScreenPosition = mMap.getProjection().toScreenLocation(new LatLng(25.341075, 120.172856));
-                    LatLng tt = mMap.getProjection().fromScreenLocation(new Point(1440,2464));
-                    // ! example output in my test code: (356, 483)
-                    Log.d(MapsActivity.class.getSimpleName(),""+tt+","+mapView.getWidth()+","+ mapView.getHeight());
+                    markerScreenPosition = mMap.getProjection().toScreenLocation(new LatLng(25.341075, 120.172856));
 
-                    mapView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    LatLng tt = mMap.getProjection().fromScreenLocation(new Point(0,0));
+                    LatLng tc = mMap.getProjection().fromScreenLocation(new Point(1080,1845));
+
+                    // ! example output in my test code: (356, 483)
+                    Log.d(MapsActivity.class.getSimpleName(),"start:"+tt.latitude+","+tt.longitude);
+                    Log.d(MapsActivity.class.getSimpleName(),"end:"+tc.latitude+","+tc.longitude);
+                    Log.d(MapsActivity.class.getSimpleName(),mapView.getWidth()+","+ mapView.getHeight());
+//                    for(LatLng latlng:latlngSiteMap.values()){
+//                        Point screenPosition = mMap.getProjection().toScreenLocation(latlng);
+//                        latlngPointHasValueMap.put(latlng,screenPosition);
+//                        Log.d(MapsActivity.class.getSimpleName(),"Screen Display:"+screenPosition.x+","+screenPosition.y+" "+latlng.latitude+","+latlng.longitude);
+//                    }
+
+                    for(String site:latlngSiteMap.keySet()){
+                        Point screenPosition = mMap.getProjection().toScreenLocation(latlngSiteMap.get(site));
+                        latlngPointHasValueMap.put(latlngSiteMap.get(site),screenPosition);
+//                        Log.d(MapsActivity.class.getSimpleName(),"Screen Display:{\"x:\""+screenPosition.x+",\"y:\""+screenPosition.y+",\"site\":\""+site+"\"}");
+                    }
                 }
             });
         }
@@ -186,8 +206,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //                return true;
 //            }
 //        });
-
-        getData();
+        readFromFile();
+//        getData();
 
 //        Point laa = mMap.getProjection().toScreenLocation(new LatLng(21.942719, 121.910504));
 //        LatLng lat = mMap.getProjection().fromScreenLocation(new Point(1000,1000));
@@ -219,28 +239,91 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //    }
 
     /*
-   *級距 R   G   B
-   * 1  153 255 153
-   * 2  0   255 0
-   * 3  0   204 0
-   * 4  255 255 0
-   * 5  255 104 102
-   * 6  255 153 0
-   * 7  255 124 128
-   * 8  255 0   0
-   * 9  153 0   51
-   * 10 204 0   255
-    */
+  *級距 R   G   B
+  * 1  153 255 153
+  * 2  0   255 0
+  * 3  0   204 0
+  * 4  255 255 0
+  * 5  255 104 102
+  * 6  255 153 0
+  * 7  255 124 128
+  * 8  255 0   0
+  * 9  153 0   51
+  * 10 204 0   255
+   */
+    int colors[] = new int[1440 * 2464];
+    private void readFromFile() {
+        try {
+            InputStream inputStream = getResources().openRawResource(R.raw.hr);
+
+            if ( inputStream != null ) {
+                InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
+                BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+                String receiveString = "";
+                StringBuilder stringBuilder = new StringBuilder();
+
+                int index=0;
+                while ( (receiveString = bufferedReader.readLine()) != null ) {
+                    colors[index] = Integer.parseInt(receiveString);
+                    if(colors[index]<5){
+                        colors[index] = Color.argb(100,153,255,153);
+                    }
+                    else if(colors[index]<10){
+                        colors[index] = Color.argb(100,0,255,0);
+                    }
+                    else if(colors[index]<15){
+                        colors[index] = Color.argb(100,0,204,0);
+                    }
+                    else if(colors[index]<20){
+                        colors[index] = Color.argb(100,255,255,0);
+                    }
+                    else if(colors[index]<25){
+                        colors[index] = Color.argb(100,255,104,102);
+                    }
+                    else if(colors[index]<30){
+                        colors[index] = Color.argb(100,255,153,0);
+                    }
+                    else if(colors[index]<35){
+                        colors[index] = Color.argb(100,255,124,128);
+                    }
+                    else if(colors[index]<40){
+                        colors[index] = Color.argb(100,255,0,0);
+                    }
+                    else if(colors[index]<45){
+                        colors[index] = Color.argb(100,153,0,51);
+                    }
+                    else{
+                        colors[index] = Color.argb(100,204,0,255);
+                    }
+                    index++;
+//                    stringBuilder.append(receiveString+",");
+                }
+                inputStream.close();
+            }
+        }
+        catch (FileNotFoundException e) {
+            Log.e(TAG, "File not found: " + e.toString());
+        } catch (IOException e) {
+            Log.e(TAG, "Can not read file: " + e.toString());
+        }
+        refreshMap();
+    }
+
+    void refreshMap(){
+        PointTileOverlay pto = new PointTileOverlay();
+        mMap.addTileOverlay(new TileOverlayOptions().tileProvider(pto));
+    }
+
+
     @Override
     public void refreshMap(List<Result> resultList) {
-        String latlng="";
-        String latlngArray[];
+        LatLng latlng = null;
+//        String latlngArray[];
         ArrayList<WeightedLatLng> weightedLatLngList = new ArrayList<WeightedLatLng>();
         for(Result res:resultList){
             latlng = latlngSiteMap.get(res.getSiteName());
-            latlngArray = latlng.split(",");
-            Double lat = Double.parseDouble(latlngArray[0]);
-            Double lng = Double.parseDouble(latlngArray[1]);
+//            Double lat = latlng.latitude;
+//            Double lng = latlng.longitude;
             Double value = 0.0;
             if (!res.getHr().toLowerCase().equals("nan")) {
                 value = Double.parseDouble(res.getHr());
@@ -275,7 +358,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     value = 1.0;
                 }
             }
-            weightedLatLngList.add(new WeightedLatLng(new LatLng(lat,lng),value));
+            if(latlng!=null) {
+                weightedLatLngList.add(new WeightedLatLng(latlng, value));
+            }
         }
         setHeatMap(weightedLatLngList);
     }
@@ -295,34 +380,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //            mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mPointTile));
 //        }
 
-        if(mTamqTileProvider==null){
-            mTamqTileProvider = new TamqPredictTileProvider.Builder()
-                    .opacity(0.5)
-                    .radius(30)
-                    .weightedData(weightedLatLngs)
-                    .build();
-            mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mTamqTileProvider));
-        }
+//        if(mTamqTileProvider==null){
+//            mTamqTileProvider = new TamqPredictTileProvider.Builder()
+//                    .opacity(0.5)
+//                    .radius(30)
+//                    .weightedData(weightedLatLngs)
+//                    .build();
+//            mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mTamqTileProvider));
+//        }
 
 //        PointTileOverlay pto = new PointTileOverlay();
 //        pto.addPoint(new LatLng(25.341075, 120.172856));
 //        mMap.addTileOverlay(new TileOverlayOptions().tileProvider(pto));
     }
 
-//    private class PointTileOverlay implements TileProvider {
-//        private List<Point> mPoints = new ArrayList<Point>();
-//        private int mTileSize = 256;
-//        private SphericalMercatorProjection mProjection = new SphericalMercatorProjection(mTileSize);
-//        private int mScale = 2;
-//        private int mDimension = mScale * mTileSize;
-//
-//        @Override
-//        public Tile getTile(int x, int y, int zoom) {
+    private class PointTileOverlay implements TileProvider {
+        private List<Point> mPoints = new ArrayList<Point>();
+        private int mTileSize = 256;
+        private SphericalMercatorProjection mProjection = new SphericalMercatorProjection(mTileSize);
+        private int mScale = 2;
+        private int mDimension = mScale * mTileSize;
+
+        @Override
+        public Tile getTile(int x, int y, int zoom) {
 //            Matrix matrix = new Matrix();
 //            float scale = (float) Math.pow(2, zoom) * mScale;
 //            matrix.postScale(scale, scale);
 //            matrix.postTranslate(-x * mDimension, -y * mDimension);
-//
+
 //            Bitmap bitmap = Bitmap.createBitmap(mDimension, mDimension, Bitmap.Config.ARGB_8888);
 //            Canvas c = new Canvas(bitmap);
 //            c.setMatrix(matrix);
@@ -330,16 +415,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //            for (Point p : mPoints) {
 //                c.drawCircle((float) p.x, (float) p.y, 1, new Paint());
 //            }
-//
+
 //            ByteArrayOutputStream baos = new ByteArrayOutputStream();
 //            bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos);
 //            return new Tile(mDimension, mDimension, baos.toByteArray());
-//        }
-//
+            double tileWidth = 1.0D / Math.pow(2.0D, (double)zoom);
+            double minX = (double)x * tileWidth;
+            double maxX = (double)(x + 1) * tileWidth ;
+            double minY = (double)y * tileWidth;
+            double maxY = (double)(y + 1) * tileWidth;
+//            Bounds tileBounds;
+//            tileBounds = new Bounds(minX, maxX, minY, maxY);
+
+            Bitmap tile = Bitmap.createBitmap(1440, 2464, Bitmap.Config.ARGB_8888);
+            tile.setPixels(colors, 0, 1440, 0, 0, 1440, 2464);
+            return convertBitmap(tile);
+        }
+
 //        public void addPoint(LatLng latLng) {
 //            mPoints.add(mProjection.toPoint(latLng));
 //        }
-//    }
+    }
+
+    private static Tile convertBitmap(Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        byte[] bitmapdata = stream.toByteArray();
+        return new Tile(bitmap.getWidth(), bitmap.getHeight(), bitmapdata);
+    }
 
     private void genMapArray(){
         //25.341075, 120.172856
@@ -382,7 +485,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    private HashMap<String,String> readItems(int resource) throws JSONException {
+    private HashMap<String,LatLng> readItems(int resource) throws JSONException {
         InputStream inputStream = getResources().openRawResource(resource);
         String json = new Scanner(inputStream).useDelimiter("\\A").next();
         JSONArray array = new JSONArray(json);
@@ -390,8 +493,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             JSONObject object = array.getJSONObject(i);
             double lat = object.getDouble("lat");
             double lng = object.getDouble("lng");
+            LatLng latLng = new LatLng(lat,lng);
             String site = object.getString("site");
-            latlngSiteMap.put(site,lat+","+lng);
+            latlngSiteMap.put(site,latLng);
         }
         return latlngSiteMap;
     }
